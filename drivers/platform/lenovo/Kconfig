@@ -1,0 +1,10 @@
+# Lenovo configuration options
+
+menu "Lenovo board selection"
+
+config PRODUCT_JD20
+	bool "Lenovo jd20 board"
+	help
+		Support for Lenovo Z6
+
+endmenu
