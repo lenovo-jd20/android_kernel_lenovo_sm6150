@@ -723,9 +723,10 @@ static int lpi_pinctrl_runtime_suspend(struct device *dev)
 	return 0;
 }
 
+/* Huaqin modify for JD2020-802 to solve current consumption problem by xuyuqing at 2019/04/23 start */
 int lpi_pinctrl_suspend(struct device *dev)
 {
-	int ret = 0;
+	int ret = -EBUSY;
 
 	dev_dbg(dev, "%s: system suspend\n", __func__);
 
@@ -748,6 +749,8 @@ int lpi_pinctrl_suspend(struct device *dev)
 		}
 	}
 
+	if (ret == -EBUSY)
+		ret = 0;
 	return ret;
 }
 
@@ -755,6 +758,7 @@ int lpi_pinctrl_resume(struct device *dev)
 {
 	return 0;
 }
+/* Huaqin modify for JD2020-802 to solve current consumption problem by xuyuqing at 2019/04/23 end */
 
 static const struct dev_pm_ops lpi_pinctrl_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(
