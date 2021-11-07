@@ -52,7 +52,6 @@ struct dp_debug_private {
 	struct dp_debug dp_debug;
 	struct dp_parser *parser;
 	struct dp_ctrl *ctrl;
-	struct dp_power *power;
 	struct mutex lock;
 	struct msm_dp_aux_bridge *sim_bridge;
 };
@@ -1561,7 +1560,6 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 
 		debug->dp_debug.mst_hpd_sim = true;
 		debug->dp_debug.sim_mode = true;
-		debug->power->sim_mode = true;
 		debug->aux->set_sim_mode(debug->aux, true,
 			debug->edid, debug->dpcd, debug->sim_bridge);
 	} else {
@@ -1576,7 +1574,6 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 		debug->ctrl->abort(debug->ctrl, false);
 
 		debug->aux->set_sim_mode(debug->aux, false, NULL, NULL, NULL);
-		debug->power->sim_mode = false;
 		debug->dp_debug.sim_mode = false;
 		debug->dp_debug.mst_hpd_sim = false;
 
@@ -2168,7 +2165,6 @@ struct dp_debug *dp_debug_get(struct dp_debug_in *in)
 	debug->catalog = in->catalog;
 	debug->parser = in->parser;
 	debug->ctrl = in->ctrl;
-	debug->power = in->power;
 
 	dp_debug = &debug->dp_debug;
 	dp_debug->vdisplay = 0;

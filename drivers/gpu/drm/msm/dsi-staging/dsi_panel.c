@@ -23,6 +23,7 @@
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
+#include "dsi_display.h"
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -447,22 +448,7 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 		goto error_disable_vregs;
 	}
 
-	rc = dsi_panel_reset(panel);
-	if (rc) {
-		pr_err("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
-		goto error_disable_gpio;
-	}
-
 	goto exit;
-
-error_disable_gpio:
-	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
-		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
-
-	if (gpio_is_valid(panel->bl_config.en_gpio))
-		gpio_set_value(panel->bl_config.en_gpio, 0);
-
-	(void)dsi_panel_set_pinctrl_state(panel, false);
 
 error_disable_vregs:
 	(void)dsi_pwr_enable_regulator(&panel->power_info, false);
@@ -1749,6 +1735,11 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command",
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+	"qcom,mdss-dsi-hbm-on-command",
+	"qcom,mdss-dsi-hbm-off-command",
+	"qcom,mdss-dsi-dimming-command",
+#endif
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1775,6 +1766,11 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+	"qcom,mdss-dsi-hbm-on-state",
+	"qcom,mdss-dsi-hbm-off-state",
+	"qcom,mdss-dsi-dimming-command-state",
+#endif
 };
 
 static int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2071,6 +2067,10 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	panel->lp11_init = utils->read_bool(utils->data,
 			"qcom,mdss-dsi-lp11-init");
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+	panel->hbm_cmd_mode = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-hbm-cmd-enable");
+#endif
 	return 0;
 }
 
@@ -3282,6 +3282,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->panel_of_node = of_node;
 	panel->parent = parent;
 	panel->type = type;
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+	panel->hbm_status = false;
+#endif
 
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
@@ -3787,7 +3790,11 @@ int dsi_panel_get_host_cfg_for_mode(struct dsi_panel *panel,
 	else
 		config->bit_clk_rate_hz_override = mode->priv_info->clk_rate_hz;
 
+#ifdef CONFIG_PRODUCT_JD20
+	config->esc_clk_rate_hz = 12800000;
+#else
 	config->esc_clk_rate_hz = 19200000;
+#endif
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
@@ -3804,8 +3811,6 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 
 	/* If LP11_INIT is set, panel will be powered up during prepare() */
-	if (panel->lp11_init)
-		goto error;
 
 	rc = dsi_panel_power_on(panel);
 	if (rc) {
@@ -3813,6 +3818,12 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 		goto error;
 	}
 
+	if (!panel->lp11_init) {
+		rc = dsi_panel_reset(panel);
+		if (rc) {
+			pr_err("[%s] panel reset failed, rc=%d\n", panel->name, rc);
+		}
+	}
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -3953,10 +3964,10 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 
 	if (panel->lp11_init) {
-		rc = dsi_panel_power_on(panel);
+		mdelay(10);
+		rc = dsi_panel_reset(panel);
 		if (rc) {
-			pr_err("[%s] panel power on failed, rc=%d\n",
-			       panel->name, rc);
+			pr_err("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
 			goto error;
 		}
 	}
@@ -4206,6 +4217,46 @@ int dsi_panel_mode_switch_to_vid(struct dsi_panel *panel)
 	return rc;
 }
 
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+int dsi_panel_hbm_setup(struct dsi_panel *panel, bool status)
+{
+	int rc = 0;
+
+	if (!panel) {
+		pr_err("Invalid params\n");
+		return -EINVAL;
+	}
+
+	if (status) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON);
+		if (rc)
+			pr_err("transmit hbm on cmd fail!\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_OFF);
+		if (rc)
+			pr_err("transmit hbm off cmd fail!\n");
+	}
+
+	return rc;
+}
+
+int dsi_panel_turn_on_dimming(struct dsi_panel *panel)
+{
+        int rc = 0;
+
+        if (!panel) {
+                pr_err("Invalid params\n");
+                return -EINVAL;
+        }
+
+        rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DIMMING);
+        if (rc)
+             pr_err("transmit dimming on cmd fail!\n");
+
+        return rc;
+}
+#endif
+
 int dsi_panel_switch(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -4246,6 +4297,9 @@ int dsi_panel_post_switch(struct dsi_panel *panel)
 	return rc;
 }
 
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+extern int dsi_panel_on_hbm;
+#endif
 int dsi_panel_enable(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -4262,6 +4316,19 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		pr_err("[%s] failed to send DSI_CMD_SET_ON cmds, rc=%d\n",
 		       panel->name, rc);
 	else
+
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+        if (dsi_panel_on_hbm == 1) {
+                pr_info("dsi restore hbm\n");
+                rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON);
+                if (rc) {
+                        pr_err("[%s] failed to send DSI_CMD_SET_HBM_ON cmds, rc=%d\n",
+                               panel->name, rc);
+                }
+		panel->hbm_status = true;
+        }
+#endif
+
 		panel->panel_initialized = true;
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4350,6 +4417,9 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	}
 	panel->panel_initialized = false;
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+#ifdef CONFIG_LCM_BACKLIGHT_HBM_MODE
+	panel->hbm_status = false;
+#endif
 
 	mutex_unlock(&panel->panel_lock);
 	return rc;

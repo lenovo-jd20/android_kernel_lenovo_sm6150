@@ -65,8 +65,6 @@ struct dp_debug {
  * @connector: double pointer to display connector
  * @catalog: instance of catalog module
  * @parser: instance of parser module
- * @ctrl: instance od ctrl module
- * @power: instance of  power module
  */
 struct dp_debug_in {
 	struct device *dev;
@@ -78,7 +76,6 @@ struct dp_debug_in {
 	struct dp_catalog *catalog;
 	struct dp_parser *parser;
 	struct dp_ctrl *ctrl;
-	struct dp_power *power;
 };
 
 /**
