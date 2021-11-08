@@ -81,7 +81,6 @@ enum print_reason {
 #define USB_SUSPEND_VOTER		"USB_SUSPEND_VOTER"
 #define CHARGER_TYPE_VOTER		"CHARGER_TYPE_VOTER"
 #define HDC_IRQ_VOTER			"HDC_IRQ_VOTER"
-#define DETACH_DETECT_VOTER		"DETACH_DETECT_VOTER"
 #define CC_MODE_VOTER			"CC_MODE_VOTER"
 #define MAIN_FCC_VOTER			"MAIN_FCC_VOTER"
 #define DCIN_AICL_VOTER			"DCIN_AICL_VOTER"
@@ -467,7 +466,6 @@ struct smb_charger {
 	struct delayed_work	thermal_regulation_work;
 	struct delayed_work	usbov_dbc_work;
 	struct delayed_work	role_reversal_check;
-	struct delayed_work	pr_swap_detach_work;
 	struct delayed_work	pr_lock_clear_work;
 
 	struct alarm		lpd_recheck_timer;
@@ -569,7 +567,6 @@ struct smb_charger {
 	int			dr_mode;
 	int			term_vbat_uv;
 	int			usbin_forced_max_uv;
-	int			init_thermal_ua;
 	u32			comp_clamp_level;
 	bool			hvdcp3_standalone_config;
 	int			wls_icl_ua;
